@@ -1,0 +1,3 @@
+The packet_classifier.py file uses the libpcap and libdnet libraries for operating on pcap files. This file was tested using the following version of the libraries:
+pylibpcap-0.6.2
+libdnet-1.12
