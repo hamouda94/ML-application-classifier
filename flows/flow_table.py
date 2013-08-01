@@ -1,43 +1,76 @@
 import string
 import operator
 import sys
+import time
 from net.ip.ip_packet import IP_packet
 
 class Flow_entry:
-	def __init__(self, ip_packet):
-		try:
-			self.flow_key = str(ip_packet.version)+"|"+str(ip_packet.v4_packet.src_ip)+"|"+str(ip_packet.v4_packet.dest_ip)
-		except AttributeError:
-			print "Unknown attribute found in ip_packet!!"
-			return
-		try:
-			if (ip_packet.v4_packet.proto == IP_packet.protocols['tcp']):
-				self.flow_key += "|TCP"+"|" + str(ip_packet.v4_packet.l4_packet.src_port) + "|" + str(ip_packet.v4_packet.l4_packet.dest_port)
-			elif (ip_packet.v4_packet.proto == IP_packet.protocols['udp']):
-				self.flow_key += "|UDP"
-		except AttributeError:
-			print "Unknown attribute found in ip_packet, while setting the protocol!!"
-			return
+	def __init__(self, flow_key):
+		self.flow_key = flow_key
 		self.total_len = 0
+		self.st = time.time() #Start time of window
+		self.rt = self.st #run time of window
+		self.run_bytes = 0 #running bytes measured in the last time-window
+		self.rate = 0.0
+
+	def update_rate(self, pkt_bytes):
+		self.run_bytes += pkt_bytes
+		self.rt = time.time()
+		if ((self.rt - self.st) > 1.0):
+			#update the rate in bps since the 1sec window has elapsed.
+			tmp_bps = (self.run_bytes*8)/(self.rt - self.st)
+			#maintain the exponential moving average of the rate.
+			self.rate = 0.8*self.rate + 0.2*tmp_bps
+			self.run_bytes = 0
+			self.st = self.rt
+
+	def print_entry(self):
+		print '%s: rate:%f bits/sec, total bytes:%d bytes' % (self.flow_key, self.rate, self.total_len)
+
+
 
 class Flow_table:
+	def get_sortable_key(self, flow_item):
+		f = operator.itemgetter(1)
+		flow_entry = f(flow_item)
+		return flow_entry.total_len
 	def __init__(self):
 		self.flow_table = {} 
 		self.big_hitters = {}
 
-	def update_flow_table(self, ip_packet):
-		flow_entry = Flow_entry(ip_packet)
-		#use the flow_key to access the dictionary
-		if (flow_entry.flow_key in self.flow_table):
-			self.flow_table[flow_entry.flow_key].total_len  +=  ip_packet.v4_packet.total_len
-			self.big_hitters[flow_entry.flow_key] += ip_packet.v4_packet.total_len
-		else:
-			self.flow_table[flow_entry.flow_key] = flow_entry
-			flow_entry.total_len = ip_packet.v4_packet.total_len
-			self.big_hitters[flow_entry.flow_key] = ip_packet.v4_packet.total_len
+	def gen_flow_key(self, ip_packet):
+		try:
+			flow_key = str(ip_packet.version)+"|"+str(ip_packet.v4_packet.src_ip)+"|"+str(ip_packet.v4_packet.dest_ip)
+		except AttributeError:
+			print "Unknown attribute found in ip_packet!!"
+			return None
+		try:
+			if (ip_packet.v4_packet.proto == IP_packet.protocols['tcp']):
+				flow_key += "|TCP"+"|" + str(ip_packet.v4_packet.l4_packet.src_port) + "|" + str(ip_packet.v4_packet.l4_packet.dest_port)
+			elif (ip_packet.v4_packet.proto == IP_packet.protocols['udp']):
+				flow_key += "|UDP"
+		except AttributeError:
+			print "Unknown attribute found in ip_packet, while setting the protocol!!"
+			return None
+		return flow_key
 
-	def print_big_hitters(self):
-		sorted_big_hitters = sorted(self.big_hitters.iteritems(), key=operator.itemgetter(1))
-		for  big_hitters_value in sorted_big_hitters:
-			print big_hitters_value
-		print 'Total sessions:',len(self.big_hitters)
+	def update_flow_table(self, ip_packet):
+		flow_key = self.gen_flow_key(ip_packet)
+		#use the flow_key to access the dictionary
+		if (flow_key in self.flow_table):
+			flow_entry = self.flow_table[flow_key]
+			flow_entry.total_len  +=  ip_packet.v4_packet.total_len
+			self.big_hitters[flow_key] += ip_packet.v4_packet.total_len
+		else:
+			flow_entry = Flow_entry(flow_key)
+			self.flow_table[flow_key] = flow_entry
+			flow_entry.total_len = ip_packet.v4_packet.total_len
+			self.big_hitters[flow_key] = ip_packet.v4_packet.total_len
+
+		flow_entry.update_rate(ip_packet.v4_packet.total_len)
+
+	def print_flow_table(self):
+		sorted_flow_entry_tupples  = sorted(self.flow_table.iteritems(), key=self.get_sortable_key)
+		for flow_entry_tupple in sorted_flow_entry_tupples:
+			flow_entry_tupple[1].print_entry()
+

@@ -38,10 +38,9 @@ if __name__=='__main__':
 		if (pkt_ip.version == 4):
 			flow_table.update_flow_table(pkt_ip)
 			pkt_filter.apply_filter(pkt_ip)
-
 		pkt = p.next()
 
-	flow_table.print_big_hitters()
+	flow_table.print_flow_table()
 	te = time.time()
 	print 'Total time taken = %f sec' % (te-ts)
 
