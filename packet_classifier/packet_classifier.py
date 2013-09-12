@@ -22,7 +22,7 @@ if __name__=='__main__':
 	#Create the pcap object
 	p = pcap.pcapObject()
 	rt = time.time()
-	pkt_filter = Pkt_filter()
+	pkt_filter = Pkt_filter("/home/asridharan/devsda5/Filter_output.json")
 	#Open the dump file
 	p.open_offline(sys.argv[1])
 	pkt = p.next()
@@ -36,8 +36,17 @@ if __name__=='__main__':
 		if data[12:14]=='\x08\x00':
 			pkt_ip = IP_packet(data[14:])
 		if (pkt_ip.version == 4):
-			flow_table.update_flow_table(pkt_ip)
-			pkt_filter.apply_filter(pkt_ip)
+			flow_entry = flow_table.update_flow_table(pkt_ip)
+			if (flow_entry.total_len < 1000000):
+				#apply the packet filter only for the first 1MB of traffic
+				#We can change this to a certain number of packets.
+				coeffs = pkt_filter.apply_filter(pkt_ip, flow_entry.flow_key)
+				if (coeffs != None):
+					for i in range(0,22):
+						if (str(i) not in flow_entry.coeffs_dict.keys()):
+							flow_entry.coeffs_dict[str(i)] = coeffs[i].tolist()
+						else: 
+							(flow_entry.coeffs_dict[str(i)]).extend(coeffs[i].tolist())
 		pkt = p.next()
 
 	flow_table.print_flow_table()

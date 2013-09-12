@@ -1,10 +1,14 @@
 import pywt #wavelet library
 import socket
 import struct
+import json
 from flows.flow_table import Flow_table
+from flows.flow_table import Flow_entry
 
 class Pkt_filter:
-	def apply_filter(self,ip_packet):
+	def __init__(self, out_filter_file):
+		self.ofd = open(out_filter_file, 'w')
+	def apply_filter(self,ip_packet, flow_entry):
 		serialize_pkt = []
 		if (ip_packet.version == 4):
 			if (ip_packet.v4_packet.proto  == 6):
@@ -23,7 +27,12 @@ class Pkt_filter:
 						break	
 					serialize_pkt.append(serial_val)
 					i += 2
-					
+				
+				#apply the wavelet.
+				if (len(serialize_pkt) > 0): 
+					coeffs = pywt.wavedec(serialize_pkt, 'haar', level=22)
+					return coeffs
+		return None		
 
 
 	

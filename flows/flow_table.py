@@ -12,6 +12,7 @@ class Flow_entry:
 		self.rt = self.st #run time of window
 		self.run_bytes = 0 #running bytes measured in the last time-window
 		self.rate = 0.0
+		self.coeffs_dict = {}
 
 	def update_rate(self, pkt_bytes):
 		self.run_bytes += pkt_bytes
@@ -25,7 +26,12 @@ class Flow_entry:
 			self.st = self.rt
 
 	def print_entry(self):
-		print '%s: rate:%f bits/sec, total bytes:%d bytes' % (self.flow_key, self.rate, self.total_len)
+		if ("0" in self.coeffs_dict.keys()):
+			length = len(self.coeffs_dict["0"])
+		else:
+			length = 0
+		print '%s: rate:%f bits/sec, total bytes:%d bytes approx coeff:%d' \
+			% (self.flow_key, self.rate, self.total_len, length)
 
 
 
@@ -68,6 +74,7 @@ class Flow_table:
 			self.big_hitters[flow_key] = ip_packet.v4_packet.total_len
 
 		flow_entry.update_rate(ip_packet.v4_packet.total_len)
+		return flow_entry
 
 	def print_flow_table(self):
 		sorted_flow_entry_tupples  = sorted(self.flow_table.iteritems(), key=self.get_sortable_key)
