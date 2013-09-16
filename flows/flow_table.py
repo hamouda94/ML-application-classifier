@@ -42,6 +42,7 @@ class Flow_table:
 		return flow_entry.total_len
 	def __init__(self):
 		self.flow_table = {} 
+		self.max_coeffs = 0;
 		self.big_hitters = {}
 
 	def gen_flow_key(self, ip_packet):

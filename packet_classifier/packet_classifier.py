@@ -12,6 +12,7 @@ from net.ip.ip_packet import IP_packet
 from net.tcp.tcp_packet import TCP_packet 
 from flows.flow_table import Flow_table
 from filters.pkt_filter import Pkt_filter
+from analyzer.pca.flow_pca import Flow_pca
 
 
 if __name__=='__main__':
@@ -47,9 +48,14 @@ if __name__=='__main__':
 							flow_entry.coeffs_dict[str(i)] = coeffs[i].tolist()
 						else: 
 							(flow_entry.coeffs_dict[str(i)]).extend(coeffs[i].tolist())
+					if (len(flow_entry.coeffs_dict["0"]) > flow_table.max_coeffs):
+						flow_table.max_coeffs = len(flow_entry.coeffs_dict["0"])
 		pkt = p.next()
 
 	flow_table.print_flow_table()
+	#Initialize the analyzer
+	PCA = Flow_pca(flow_table)
+	PCA.perform_pca()
 	te = time.time()
 	print 'Total time taken = %f sec' % (te-ts)
 
