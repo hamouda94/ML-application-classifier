@@ -52,10 +52,10 @@ if __name__=='__main__':
 						flow_table.max_coeffs = len(flow_entry.coeffs_dict["0"])
 		pkt = p.next()
 
-	flow_table.print_flow_table()
 	#Initialize the analyzer
 	PCA = Flow_pca(flow_table)
 	PCA.perform_pca()
+	flow_table.print_flow_table()
 	te = time.time()
 	print 'Total time taken = %f sec' % (te-ts)
 

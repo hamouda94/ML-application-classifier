@@ -13,6 +13,8 @@ class Flow_entry:
 		self.run_bytes = 0 #running bytes measured in the last time-window
 		self.rate = 0.0
 		self.coeffs_dict = {}
+		self.dimension = -1
+		self.dimension_val = 0.0
 
 	def update_rate(self, pkt_bytes):
 		self.run_bytes += pkt_bytes
@@ -30,8 +32,8 @@ class Flow_entry:
 			length = len(self.coeffs_dict["0"])
 		else:
 			length = 0
-		print '%s: rate:%f bits/sec, total bytes:%d bytes approx coeff:%d' \
-			% (self.flow_key, self.rate, self.total_len, length)
+		print '%s: rate:%f bits/sec, total bytes:%d bytes approx coeff:%d, dimension:%d, corr_dim:%f' \
+			% (self.flow_key, self.rate, self.total_len, length, self.dimension, self.dimension_val)
 
 
 
