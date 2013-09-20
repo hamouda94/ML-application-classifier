@@ -15,6 +15,8 @@ class Flow_entry:
 		self.coeffs_dict = {}
 		self.dimension = -1
 		self.dimension_val = 0.0
+		self.service = ""
+		self.pkts = 0
 
 	def update_rate(self, pkt_bytes):
 		self.run_bytes += pkt_bytes
@@ -28,12 +30,12 @@ class Flow_entry:
 			self.st = self.rt
 
 	def print_entry(self):
-		if ("0" in self.coeffs_dict.keys()):
-			length = len(self.coeffs_dict["0"])
+		if ("21" in self.coeffs_dict.keys()):
+			length = len(self.coeffs_dict["21"])
 		else:
 			length = 0
-		print '%s: rate:%f bits/sec, total bytes:%d bytes approx coeff:%d, dimension:%d, corr_dim:%f' \
-			% (self.flow_key, self.rate, self.total_len, length, self.dimension, self.dimension_val)
+		print '%s: rate:%f bits/sec, total bytes:%d bytes approx coeff:%d, dimension:%d, corr_dim:%f, service:%s' \
+			% (self.flow_key, self.rate, self.total_len, length, self.dimension, self.dimension_val, self.service)
 
 
 
@@ -70,10 +72,12 @@ class Flow_table:
 			flow_entry = self.flow_table[flow_key]
 			flow_entry.total_len  +=  ip_packet.v4_packet.total_len
 			self.big_hitters[flow_key] += ip_packet.v4_packet.total_len
+			flow_entry.pkts += 1
 		else:
 			flow_entry = Flow_entry(flow_key)
 			self.flow_table[flow_key] = flow_entry
 			flow_entry.total_len = ip_packet.v4_packet.total_len
+			flow_entry.pkts += 1
 			self.big_hitters[flow_key] = ip_packet.v4_packet.total_len
 
 		flow_entry.update_rate(ip_packet.v4_packet.total_len)
