@@ -18,7 +18,8 @@ from analyzer.pca.flow_pca import Flow_pca
 
 if __name__=='__main__':
 	#session table.
-	json_data = open('settings.json')
+	print "Loading JSON %s" % (sys.argv[1])
+	json_data = open(sys.argv[1])
 	app_signature = json.load(json_data)
 	ts = time.time()
 	print 'start time :%f' % ts
@@ -62,7 +63,7 @@ if __name__=='__main__':
 			pkt = p.next()
 
 	#Initialize the analyzer
-	PCA = Flow_pca(flow_table)
+	PCA = Flow_pca(flow_table, "21")
 	PCA.perform_pca()
 	#flow_table.print_flow_table()
 	te = time.time()
