@@ -82,7 +82,7 @@ if __name__=='__main__':
 	i = 0
 	Y = numpy.empty([len(known_flow_table.flow_table), 1], numpy.float)
 	for flow_key in known_flow_table.flow_table.keys():
-		Y[i] = (known_flow_table.flow_table[flow_key].service == "netflix")
+		Y[i] = (known_flow_table.flow_table[flow_key].service == "skype")
 		i += 1
 
 	
@@ -127,10 +127,10 @@ if __name__=='__main__':
 		if ((flow_entry.hypothesis < 0.45) and (flow_entry.service == "unknown")):
 			#unclassified
 			flow_entry.print_entry(uncl_fd)
-			false_neg += 1
 		elif ((flow_entry.hypothesis > 0.45) and (flow_entry.service == "unknown")): 
 			#classified
 			flow_entry.print_entry(cl_fd)
+			false_neg += 1
 		i += 1
 	te = time.time()
 	print "unknown samples:%d, background samples:%d, samples:%d, unkwn bkgnd sess:%d, false_neg:%d" % \
