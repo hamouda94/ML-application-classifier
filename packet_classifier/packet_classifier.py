@@ -19,14 +19,15 @@ from analyzer.logistic_reg.flow_log_regg import Flow_log_regg
 
 
 if __name__=='__main__':
-	#session table.
 	print "Loading JSON %s" % (sys.argv[1])
 	json_data = open(sys.argv[1])
 	settings = json.load(json_data)
 	ts = time.time()
 	print 'start time :%f' % ts
+
+	#session table, for known and unknown
 	known_flow_table = Flow_table()
-	unkown_flow_table = Flow_table()
+	unknown_flow_table = Flow_table()
 	rt = time.time()
 	pkt_filter = Pkt_filter("/home/asridharan/devsda5/Filter_output.json")
 	bkgnd_sess = 0
@@ -48,10 +49,10 @@ if __name__=='__main__':
 			if data[12:14]=='\x08\x00':
 				pkt_ip = IP_packet(data[14:])
 			if (pkt_ip.version == 4):
-				if (pcap_file_key != "unkown"):
+				if (pcap_file_key != "unknown"):
 					flow_table = known_flow_table
 				else:
-					flow_table = unkown_flow_table
+					flow_table = unknown_flow_table
 				flow_entry = flow_table.update_flow_table(pkt_ip)
 				#If the PCAP is the back-ground signature go ahead and update the flow entry blindly
 				if ((pcap_file_key == "background") or (flow_entry.service == "")):
@@ -72,7 +73,7 @@ if __name__=='__main__':
 							flow_table.max_coeffs = len(flow_entry.coeffs_dict["0"])
 			pkt = p.next()
 
-	#Initialize the analyzer
+	#Initialize the PCA object
 	PCA = Flow_pca(known_flow_table, "0")
 	PCA.normalize_and_scale()
 	#flow_table.print_flow_table()
@@ -90,15 +91,16 @@ if __name__=='__main__':
 	obj_LogReg = Flow_log_regg(known_flow_table, PCA.X, Y) 
 	print "Created the logistic regression object"
 
+	#Create the PCA object for the unknown samples
 	print "Creating the unknown sample matrix"
-	PCA_unkown = Flow_pca(unkown_flow_table, "0")
-	PCA_unkown.normalize_and_scale()
+	PCA_unknown = Flow_pca(unknown_flow_table, "0")
+	PCA_unknown.normalize_and_scale()
 
-	#Make sure the number of features in the PCA_unkown matches the number of features PCA
-	print "before shape:",PCA_unkown.X.shape
-	if (PCA_unkown.X.shape[1] > (PCA.X.shape[1])):
-			PCA_unkown.X = PCA_unkown.X[:,:PCA.X.shape[1]]
-	print "after shape:",PCA_unkown.X.shape
+	#Make sure the number of features in the PCA_unknown matches the number of features PCA
+	print "before shape:",PCA_unknown.X.shape
+	if (PCA_unknown.X.shape[1] > (PCA.X.shape[1])):
+			PCA_unknown.X = PCA_unknown.X[:,:PCA.X.shape[1]]
+	print "after shape:",PCA_unknown.X.shape
 
 	#Use the obj_LogReg to run a hypothesis test on each of the flow entry
 	i = 0
@@ -107,24 +109,31 @@ if __name__=='__main__':
 	samples = 0
 	unknown_samples = 0
 	unknown_bkgnd_sess = 0
-	for flow_key in unkown_flow_table.flow_table.keys():
+	#open file to log classified entries
+	cl_fd = open(settings["files"]["classified"],"w")
+	uncl_fd = open(settings["files"]["un-classified"],"w")
+	#open file to log un-classified entries
+	for flow_key in unknown_flow_table.flow_table.keys():
 		samples += 1
-		flow_entry = unkown_flow_table.flow_table[flow_key]
-		Sample = numpy.array([PCA_unkown.X[i,:]])
+		flow_entry = unknown_flow_table.flow_table[flow_key]
+		Sample = numpy.array([PCA_unknown.X[i,:]])
 		if flow_key in known_flow_table.flow_table.keys():
 			flow_entry.service = known_flow_table.flow_table[flow_key].service
 			if (flow_entry.service == "background"):
 				unknown_bkgnd_sess += 1
-		hypothesis = obj_LogReg.hypothesis(Sample)
-		if (flow_entry.service == "unkown"):
+		flow_entry.hypothesis = obj_LogReg.hypothesis(Sample)
+		if (flow_entry.service == "unknown"):
 			unknown_samples += 1
-		if ((hypothesis < 0.5) and (flow_entry.service == "unkown")):
+		if ((flow_entry.hypothesis < 0.45) and (flow_entry.service == "unknown")):
+			#unclassified
+			flow_entry.print_entry(uncl_fd)
 			false_neg += 1
-		elif ((hypothesis > 0.5) and (flow_entry.service == "unkown")): 
-			flow_entry.print_entry()
+		elif ((flow_entry.hypothesis > 0.45) and (flow_entry.service == "unknown")): 
+			#classified
+			flow_entry.print_entry(cl_fd)
 		i += 1
 	te = time.time()
-	print "unkown samples:%d, background samples:%d, samples:%d, unkwn bkgnd sess:%d, false_neg:%d" % \
+	print "unknown samples:%d, background samples:%d, samples:%d, unkwn bkgnd sess:%d, false_neg:%d" % \
 		(unknown_samples, bkgnd_sess, samples, unknown_bkgnd_sess, false_neg)
 	print 'Total time taken = %f sec' % (te-ts)
 

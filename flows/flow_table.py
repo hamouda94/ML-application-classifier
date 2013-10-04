@@ -1,5 +1,6 @@
 import string
 import operator
+import os
 import sys
 import time
 from net.ip.ip_packet import IP_packet
@@ -17,6 +18,7 @@ class Flow_entry:
 		self.dimension_val = 0.0
 		self.service = ""
 		self.pkts = 0
+		self.hypothesis = 0.0
 
 	def update_rate(self, pkt_bytes):
 		self.run_bytes += pkt_bytes
@@ -29,13 +31,20 @@ class Flow_entry:
 			self.run_bytes = 0
 			self.st = self.rt
 
-	def print_entry(self):
+	def print_entry(self, fd = None):
 		if ("21" in self.coeffs_dict.keys()):
 			length = len(self.coeffs_dict["21"])
 		else:
 			length = 0
-		print '%s: rate:%f bits/sec, total bytes:%d bytes approx coeff:%d, dimension:%d, corr_dim:%f, service:%s' \
-			% (self.flow_key, self.rate, self.total_len, length, self.dimension, self.dimension_val, self.service)
+		fmtstr = self.flow_key +":" + " rate:" +str(self.rate)+" bits/sec"+" total bytes:"+str(self.total_len)+"bytes"\
+			+" approx coeff:"+str(length)+" dimension:"+str(self.dimension_val)+" service:"+self.service \
+			+" hypothesis:"+str(self.hypothesis)
+		if (fd == None):
+			#throw it to stdout
+			print fmtstr
+		else:
+			fmtstr += os.linesep
+			fd.write(fmtstr)
 
 
 
