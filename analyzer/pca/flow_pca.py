@@ -21,8 +21,7 @@ class Flow_pca:
 						self.X[i,j] = coeff
 						j += 1
 			i += 1
-
-	def perform_pca(self):
+	def normalize_and_scale(self):
 		#Normalize the matrix X
 		print "Calculating mean for the matrix X ...."
 		ts = time.time()
@@ -46,6 +45,8 @@ class Flow_pca:
 		te = time.time()
 		print "Done scaling the matrix...."
 		print "Time take to scale the matrix:%f seconds" % (te - ts)
+
+	def perform_pca(self):
 		#Take the transpose of the matrix, since we want the columns to represent the features
 		# and the rows to represent the dimensions
 		#Generate the covariance matrix.
