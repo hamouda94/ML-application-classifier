@@ -1,16 +1,45 @@
 import os
 import time
 import numpy
+import json
 from flows.flow_table import Flow_table
 
 class Flow_pca:
-	def __init__(self, flows, coeffs_idx = "0"):
+	def store(self, store_file):
+		pca_store = {}
+		U_reduce_list = self.U_reduce.tolist()
+		u_reduce_fd = open(store_file,"w")
+		pca_store["features"] = self.features
+		pca_store["U_reduce"] = U_reduce_list
+		json.dump(pca_store, u_reduce_fd)
+		u_reduce_fd.close()
+
+	def loadPCAFromStore(self, json_store):
+		try:
+			PCA_fd = open(json_store, "r")
+			PCA_json = json.load(PCA_fd)
+			self.features = PCA_json["features"]
+			U_reduce_list = PCA_json["U_reduce"]
+			self.U_reduce = numpy.array(U_reduce_list)
+		except IOError:
+			print "Unable to open %s" % (json_store)
+			return False
+		return True
+			
+	def __init__(self, flows = None, service_id = None, SUT = "", coeffs_idx = "0", json_store = None):
 		#Create the matrix X
 		#Rows are samples (sessions), and columns are features (coefficients)
+		if json_store != None:
+			if (self.loadPCAFromStore(json_store) == True):
+				return 
+			else:
+				return None
 		self.flows = flows
 		print "Using coefficient %s for analysis.." % (coeffs_idx)
+		#Add an extra column to set the service ID
 		self.X = numpy.zeros([len(flows.flow_table), flows.max_coeffs],numpy.float)
 		self.dimensions = 0
+		self.features = self.X.shape[1]
 		print "Creating X of shape:", self.X.shape
 		#populate the array
 		i = 0
@@ -46,7 +75,7 @@ class Flow_pca:
 		print "Done scaling the matrix...."
 		print "Time take to scale the matrix:%f seconds" % (te - ts)
 
-	def perform_pca(self):
+	def performPCA(self):
 		#Take the transpose of the matrix, since we want the columns to represent the features
 		# and the rows to represent the dimensions
 		#Generate the covariance matrix.
@@ -80,46 +109,17 @@ class Flow_pca:
 		#Get the reduced U marix
 		self.U_reduce = U[:,:self.dimensions]
 		print "Got new U_reduce with shape:",self.U_reduce.shape
-		PCA = numpy.dot(self.X, self.U_reduce)
-		print "Got the PCA with shape:", PCA.shape
+		self.X = numpy.dot(self.X, self.U_reduce)
+		print "Got the PCA with shape:", self.X.shape
 
-		#update the dimension to which each entry belongs
-		i = 0
-		for flow_key in self.flows.flow_table.keys():
-			self.flows.flow_table[flow_key].dimension = 0
-			mean_vec = PCA[i,:]
-			flow_sum = numpy.sum(mean_vec)
-			flow_entry = self.flows.flow_table[flow_key]
-			flow_entry.dimenion_val = 0
-			max_per = 0
-			for j in range(0, PCA.shape[1]):
-				if ((PCA[i,j]/flow_sum )> max_per):	
-					max_per = PCA[i,j]/flow_sum
-					flow_entry.dimension = j
-					flow_entry.dimension_val = max_per
-
-			if flow_entry.service in self.dim_service_list[flow_entry.dimension].keys():
-				self.dim_service_list[flow_entry.dimension][flow_entry.service] += flow_entry.dimension_val
-			else:
-				self.dim_service_list[flow_entry.dimension][flow_entry.service] = flow_entry.dimension_val
-			i += 1
-		common_dim = {}
-		print "Generating dimension service list....."
-		for i in range(0, self.dimensions):
-			if ("unkown" in self.dim_service_list[i].keys()):
-				for service in self.dim_service_list[i].keys(): 
-					 if (service == "unkown"):
-					 	continue
-					 if service not in common_dim.keys():
-					 	common_dim[service] = self.dim_service_list[i]["unkown"]
-					 else:
-					 	common_dim[service] += self.dim_service_list[i]["unkown"]
-		print "Final list of similarity score:"
-		for service in common_dim.keys():
-			if service == "unkown":
-				continue
-			print "%s: %f" % (service, common_dim[service])
 		return
+
+	def reduceVector(self, X):
+		#X is an MxN matrix and self.U_reduce is an NxK matrix
+		return numpy.dot(X, self.U_reduce)
+
+	def getUReduce(self):
+		return self.U_reduce
 
 
 	

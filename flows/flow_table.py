@@ -60,22 +60,43 @@ class Flow_table:
 
 	def gen_flow_key(self, ip_packet):
 		try:
-			flow_key = str(ip_packet.version)+"|"+str(ip_packet.v4_packet.src_ip)+"|"+str(ip_packet.v4_packet.dest_ip)
+			#figure out if this is upstream or downstream traffic
+			client="192.168"
+			upstream = False
+			if (client in str(ip_packet.v4_packet.src_ip)):
+				upstream = True
+			if (upstream == True):		
+				flow_key = str(ip_packet.version)+"|"+str(ip_packet.v4_packet.src_ip)+"|"+str(ip_packet.v4_packet.dest_ip)
+			else:
+				#downstream
+				flow_key = str(ip_packet.version)+"|"+str(ip_packet.v4_packet.dest_ip)+"|"+str(ip_packet.v4_packet.src_ip)
 		except AttributeError:
 			print "Unknown attribute found in ip_packet!!"
 			return None
 		try:
 			if (ip_packet.v4_packet.proto == IP_packet.protocols['tcp']):
-				flow_key += "|TCP"+"|" + str(ip_packet.v4_packet.l4_packet.src_port) + "|" + str(ip_packet.v4_packet.l4_packet.dest_port)
-			elif (ip_packet.v4_packet.proto == IP_packet.protocols['udp']):
-				flow_key += "|UDP"
+				flow_key += "|TCP"
+			else:
+				return None
 		except AttributeError:
-			print "Unknown attribute found in ip_packet, while setting the protocol!!"
+			print "Unknown attribute found in IP packet, while setting the protocol!!"
+			return None
+		try:
+			if (upstream == True):
+				flow_key += "|"+str(ip_packet.v4_packet.l4_packet.src_port)+"|"+str(ip_packet.v4_packet.l4_packet.dest_port)
+			else:
+				#downstream
+				flow_key += "|"+str(ip_packet.v4_packet.l4_packet.dest_port)+"|"+str(ip_packet.v4_packet.l4_packet.src_port)
+		except AttributeError:
+			print "Flow key:%s %d:Unknown attribute found in ip_packet, while setting the src/dest port!!" % (flow_key, upstream)
 			return None
 		return flow_key
 
 	def update_flow_table(self, ip_packet):
 		flow_key = self.gen_flow_key(ip_packet)
+		if (flow_key == None):
+			#Unsupported traffic, return None
+			return None
 		#use the flow_key to access the dictionary
 		if (flow_key in self.flow_table):
 			flow_entry = self.flow_table[flow_key]
