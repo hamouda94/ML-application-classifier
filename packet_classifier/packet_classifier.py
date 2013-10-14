@@ -27,7 +27,7 @@ if __name__=='__main__':
 	settings = json.load(json_data)
 	ts = time.time()
 	print 'start time :%f' % ts
-	detail_coeff = "21"
+	detail_coeff = "5"
 	SUT = "netflix"
 	supervised_samples = {}
 
@@ -232,28 +232,46 @@ if __name__=='__main__':
 				continue
 		if (flow_entry.service == "unknown"):
 			unknown_samples += 1
+		server_key = str(flow_entry.server_ip) +"|"+str(flow_entry.server_port)
 		#Walk through the log-regressions objects for each of known apps and calcualte the hypothesis
 		for service_key in settings["apps"].keys():
 			if service_key == "unknown":
 				continue
 			flow_entry.hypothesis = obj_LogReg[service_key].hypothesis(Sample)
-			if (flow_entry.hypothesis > max_hypothesis):
-				max_hypothesis = flow_entry.hypothesis
-				flow_entry.service = service_key
+#			if (flow_entry.hypothesis > max_hypothesis):
+#				max_hypothesis = flow_entry.hypothesis
+#				flow_entry.service = service_key
 			avg_unknown_hypothesis[service_key] += flow_entry.hypothesis
-		flow_entry.hypothesis = max_hypothesis
+			if service_key in unknown_flow_table.services[server_key]:
+				unknown_flow_table.services[server_key][service_key] += flow_entry.hypothesis
+			else:
+				unknown_flow_table.services[server_key][service_key] = flow_entry.hypothesis
+#		flow_entry.hypothesis = max_hypothesis
 		if (flow_entry.service in classified_flows.keys()):
 			classified_flows[flow_entry.service] += 1
 		else:
 			classified_flows[flow_entry.service] = 1
 		 #Keep track of how many flows are classified as the cassified_service
-		if (flow_entry.service == SUT):
-			classified_samples += 1
-			flow_entry.print_entry(cl_fd)
-		else:
-			flow_entry.print_entry(uncl_fd)
+#		if (flow_entry.service == SUT):
+#			classified_samples += 1
+#			flow_entry.print_entry(cl_fd)
+#		else:
+#			flow_entry.print_entry(uncl_fd)
 		#increment the counter in the matrix
 		i += 1
+
+	for server_key in unknown_flow_table.services:
+		max_hypothesis = 0.0
+		classified_service = ""
+		print "Classifying server key:%s" % (server_key)
+		for service_key in unknown_flow_table.services[server_key]:
+			if unknown_flow_table.services[server_key][service_key] > max_hypothesis:
+				max_hypothesis = unknown_flow_table.services[server_key][service_key]
+				classified_service = service_key
+		if (classified_service == SUT):
+			cl_fd.write(server_key+":"+classified_service+":"+str(max_hypothesis)+"\n")
+		else:
+			uncl_fd.write(server_key+":"+classified_service+":"+str(max_hypothesis)+"\n")
 
 	cl_fd.close()
 	uncl_fd.close()

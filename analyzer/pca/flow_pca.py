@@ -98,7 +98,7 @@ class Flow_pca:
 		S_parsum = 0
 		for i in range(0, S.shape[0]):
 			S_sum += S[i]
-		for i in range (0, self.X.shape[0]):
+		for i in range (0, S.shape[0]):
 			S_parsum += S[i]
 			if ( (1 -  S_parsum/S_sum ) < 0.01 ) :
 				break

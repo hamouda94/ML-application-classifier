@@ -19,6 +19,8 @@ class Flow_entry:
 		self.service = ""
 		self.pkts = 0
 		self.hypothesis = 0.0
+		self.server_ip = ""
+		self.server_port = ""
 
 	def update_rate(self, pkt_bytes):
 		self.run_bytes += pkt_bytes
@@ -57,43 +59,50 @@ class Flow_table:
 		self.flow_table = {} 
 		self.max_coeffs = 0;
 		self.big_hitters = {}
+		self.services = {}
 
 	def gen_flow_key(self, ip_packet):
 		try:
 			#figure out if this is upstream or downstream traffic
 			client="192.168"
 			upstream = False
+			server_ip = ""
+			server_port = ""
 			if (client in str(ip_packet.v4_packet.src_ip)):
 				upstream = True
 			if (upstream == True):		
 				flow_key = str(ip_packet.version)+"|"+str(ip_packet.v4_packet.src_ip)+"|"+str(ip_packet.v4_packet.dest_ip)
+				server_ip = str(ip_packet.v4_packet.dest_ip)
 			else:
 				#downstream
 				flow_key = str(ip_packet.version)+"|"+str(ip_packet.v4_packet.dest_ip)+"|"+str(ip_packet.v4_packet.src_ip)
+				server_ip = str(ip_packet.v4_packet.src_ip)
 		except AttributeError:
-			print "Unknown attribute found in ip_packet!!"
-			return None
+			print "Unknown attribute found in ip_packet!!", server_ip
+			return (None, None, None)
 		try:
 			if (ip_packet.v4_packet.proto == IP_packet.protocols['tcp']):
 				flow_key += "|TCP"
 			else:
-				return None
+				return (None, None, None)
 		except AttributeError:
 			print "Unknown attribute found in IP packet, while setting the protocol!!"
-			return None
+			return (None, None, None)
 		try:
 			if (upstream == True):
 				flow_key += "|"+str(ip_packet.v4_packet.l4_packet.src_port)+"|"+str(ip_packet.v4_packet.l4_packet.dest_port)
+				server_port = ip_packet.v4_packet.l4_packet.dest_port
 			else:
 				#downstream
 				flow_key += "|"+str(ip_packet.v4_packet.l4_packet.dest_port)+"|"+str(ip_packet.v4_packet.l4_packet.src_port)
+				server_port = ip_packet.v4_packet.l4_packet.src_port
 		except AttributeError:
 			print "Flow key:%s %d:Unknown attribute found in ip_packet, while setting the src/dest port!!" % (flow_key, upstream)
-			return None
-		return flow_key
+			return (None, None, None)
+		return (flow_key, server_ip, server_port)
 
 	def update_flow_table(self, ip_packet):
-		flow_key = self.gen_flow_key(ip_packet)
+		[flow_key, server_ip, server_port] = self.gen_flow_key(ip_packet)
 		if (flow_key == None):
 			#Unsupported traffic, return None
 			return None
@@ -111,6 +120,11 @@ class Flow_table:
 			self.big_hitters[flow_key] = ip_packet.v4_packet.total_len
 
 		flow_entry.update_rate(ip_packet.v4_packet.total_len)
+		flow_entry.server_ip = server_ip
+		flow_entry.server_port = server_port
+		service_key = str(flow_entry.server_ip)+"|"+str(flow_entry.server_port)
+		if (service_key not in self.services):
+			self.services[service_key] = {}
 		return flow_entry
 
 	def print_flow_table(self):
