@@ -55,9 +55,10 @@ class Flow_table:
 		f = operator.itemgetter(1)
 		flow_entry = f(flow_item)
 		return flow_entry.total_len
-	def __init__(self):
+	def __init__(self, max_levels):
 		self.flow_table = {} 
-		self.max_coeffs = 0;
+		self.max_levels = max_levels
+		self.max_coeffs = [0 for k in range(0, max_levels)];
 		self.big_hitters = {}
 		self.services = {}
 

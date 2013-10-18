@@ -35,15 +35,15 @@ class Flow_pca:
 			else:
 				return None
 		self.flows = flows
-		print "Using coefficient %s for analysis.." % (coeffs_idx)
+		print "Using coefficient %d for analysis.." % (int(coeffs_idx))
 		#Add an extra column to set the service ID
-		self.X = numpy.zeros([len(flows.flow_table), flows.max_coeffs],numpy.float)
+		self.X = numpy.zeros([len(flows.flow_table), flows.max_coeffs[int(coeffs_idx)]],numpy.float)
 		self.dimensions = 0
 		self.features = self.X.shape[1]
 		print "Creating X of shape:", self.X.shape
 		#populate the array
 		i = 0
-		for keys in flows.flow_table.keys():
+		for keys in flows.flow_table:
 			j = 0
 			if (len(flows.flow_table[keys].coeffs_dict)):
 					for coeff in flows.flow_table[keys].coeffs_dict[coeffs_idx]:
@@ -100,6 +100,8 @@ class Flow_pca:
 			S_sum += S[i]
 		for i in range (0, S.shape[0]):
 			S_parsum += S[i]
+			if (S_sum == 0):
+				print"ERROR:S_sum is zero. Will result in divide by zero error!!"
 			if ( (1 -  S_parsum/S_sum ) < 0.01 ) :
 				break
 		self.dimensions = i
