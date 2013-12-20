@@ -14,7 +14,7 @@ from optparse import OptionParser
 from net.ip.ip_packet import IP_packet
 from net.tcp.tcp_packet import TCP_packet 
 from flows.flow_table import Flow_table
-from filters.pkt_filter import Pkt_filter
+from filters.pkt_len_filter import Pkt_len_filter
 from analyzer.pca.flow_pca import Flow_pca
 from analyzer.logistic_reg.flow_log_regg import Flow_log_regg
 #process_pkt:
@@ -26,7 +26,7 @@ from analyzer.logistic_reg.flow_log_regg import Flow_log_regg
 #					  learn new parameters for our	classification.
 #	unknown_flow_table: The flow table object containing all the unknown 
 #					  flows. 
-def process_pkt(pkt, known_flow_table, unknown_flow_table, pkt_filter):
+def process_pkt(pkt, known_flow_table, unknown_flow_table, pkt_filter, file_name):
 	length= pkt[0]
 	if (length == 0):
 		print "found 0 length packet"
@@ -36,7 +36,7 @@ def process_pkt(pkt, known_flow_table, unknown_flow_table, pkt_filter):
 	if data[12:14]=='\x08\x00':
 		pkt_ip = IP_packet(data[14:])
 	if (pkt_ip.version == 4):
-		if (pcap_file_key != "unknown"):
+		if (file_name != "unknown"):
 			flow_table = known_flow_table
 		else:
 			flow_table = unknown_flow_table
@@ -44,7 +44,7 @@ def process_pkt(pkt, known_flow_table, unknown_flow_table, pkt_filter):
 		if (flow_entry == None):
 			print "Could not create a flow entry"
 			return
-		if (flow_entry.pkts > 20):
+		if (flow_entry.pkts > 1000):
 			return
 		#If the PCAP is the back-ground signature go ahead and update 
 		#the flow entry blindly
@@ -57,20 +57,27 @@ def process_pkt(pkt, known_flow_table, unknown_flow_table, pkt_filter):
 				supervised_samples[pcap_file_key] += 1
 			else:
 				supervised_samples[pcap_file_key] = 1
-		#apply the packet filter only for the first 1MB of traffic
-		#We can change this to a certain number of packets.
-		coeffs = pkt_filter.apply_filter(pkt_ip, flow_entry.flow_key)
-		if (coeffs != None):
+		#apply the packet filter only 
+		plength = pkt_filter.apply_filter(pkt_ip, flow_entry.flow_key)
+		#we are using the packet length filter, so set max_levels to 1.
+		#TODO: The concept of max-levels made sense when we using wavelets. 
+		#With packet lengths, max-levels doesn't make much sense. Though, it
+		#make sense if use max-levels to denote the different metrics that we 
+		#plan to use for a given flow-entry, for e.g. use inter-arrival times
+		#along with packet length.
+		if (plength > 0):
 			for i in range(0, max_levels):
 				if str(i) not in flow_entry.coeffs_dict:
-					flow_entry.coeffs_dict[str(i)] = coeffs[i].tolist()
+					flow_entry.coeffs_dict[str(i)] = []
 				else: 
-					(flow_entry.coeffs_dict[str(i)]).extend(coeffs[i].tolist())
+					(flow_entry.coeffs_dict[str(i)]).append(plength)
 				if (len(flow_entry.coeffs_dict[str(i)]) > flow_table.max_coeffs[i]):
 					flow_table.max_coeffs[i] = len(flow_entry.coeffs_dict[str(i)])
 
 #main function
 if __name__=='__main__':
+	print
+	"===========================Initialization===================================="
 	parser = OptionParser(usage="%prog [-l] <settings JSON>")
 	parser.add_option("-l", "--learn", action="store_true", default=False, 
 					dest="learn", help="Perform learning on the PCAp files or not")
@@ -95,8 +102,7 @@ if __name__=='__main__':
 	known_flow_table = Flow_table(max_levels)
 	unknown_flow_table = Flow_table(max_levels)
 	rt = time.time()
-	pkt_filter = Pkt_filter("/home/asridharan/devsda5/filter_output.json",
-						max_levels=max_levels)
+	pkt_filter = Pkt_len_filter()
 	bkgnd_sess = 0
 
 
@@ -123,8 +129,10 @@ if __name__=='__main__':
 	if ("PCA" in settings["files"] and options.learn == False):
 			for detail_coeff in level_steps:
 				PCA[detail_coeff]= Flow_pca(json_store=settings["files"]["PCA"][detail_coeff])
+
+	print "=====================Initialization done ============================"
 			
-			
+	print "====================Processing PCAP=============================="		
 	#PCAp file processing....
 	for pcap_file_key in settings["apps"]:
 		#if we don't need to learn the parameters read only the unknown PCAp
@@ -147,28 +155,32 @@ if __name__=='__main__':
 				#table.
 				process_pkt(pkt=pkt, known_flow_table = known_flow_table,\
 					unknown_flow_table = unknown_flow_table, \
-					pkt_filter=pkt_filter)
+					pkt_filter=pkt_filter, file_name=pcap_file_key)
 				pkt = p.next()
+	print "====================Processing PCAP done=============================="		
 
 	#list the number of supervised samples
 	for service in supervised_samples:
 		print "supervised samples for %s:%d" % (service, supervised_samples[service])
 
+	print "====================Creating PCA objects (Supervised)=============================="		
 	#initialize the PCA object
 	if (options.learn == True):
 		print "we need to learn/re-learn the theta parameters"
 		for detail_coeff in level_steps:
-			PCA[detail_coeff] = Flow_pca(known_flow_table, service_id, sut, str(detail_coeff))
+			PCA[detail_coeff] = Flow_pca(known_flow_table, service_id, SUT, str(detail_coeff))
 			PCA[detail_coeff].normalize_and_scale()
 			PCA[detail_coeff].performPCA()
 			#get the reduced form of the matrix
 			PCA[detail_coeff].store(settings["files"]["PCA"][detail_coeff])
 			print "stored the u_reduce vector to persistent memory"
+	print "====================PCA object creation done (Supervised)=============================="		
 
 
 	#generate logistic reg parameters for each of the different services
 	rewrite_param_json = False
 	if (options.learn == True):
+		print "====================Creating Logistic regression objects=============================="		
 		for detail_coeff in level_steps:
 			logistic_params = {}
 			for service_key in settings["apps"]:
@@ -187,15 +199,15 @@ if __name__=='__main__':
 					i += 1
 
 				#create the logistic regression object for this service
-				obj_LogReg[detail_coeff][service_key] = flow_log_regg(known_flow_table, PCA[detail_coeff].X, Y) 
-				theta_params = obj_LogReg[detail_coeff][service_key].getparams()
+				obj_LogReg[detail_coeff][service_key] = Flow_log_regg(known_flow_table, PCA[detail_coeff].X, Y) 
+				theta_params = obj_LogReg[detail_coeff][service_key].getParams()
 				print theta_params
 				logistic_params[service_key]=theta_params.tolist()
 				print "created the logistic regression object for %s, coeff:%d" % (service_key, detail_coeff)
 				#obtain hypothesis for each of the samples, to get an estimate of the 
 				#average hypothesis
 				print "avg hypothesis for service %s is: %f" % (service_key,\
-				obj_LogReg[detail_coeff][service_key].hypothesisthres())
+				obj_LogReg[detail_coeff][service_key].hypothesisThres())
 
 				#this is the file where the service parameters will be stored.
 			print "writing the service parameters in the json file %s" %\
@@ -203,11 +215,12 @@ if __name__=='__main__':
 			param_fd = open(settings["files"]["parameters"][detail_coeff],"w")
 			json.dump(logistic_params, param_fd)
 			param_fd.close()
+		print "====================Logistic regression objects created=============================="		
 	else:
 		print "skipping writing the of service parameters into the json file"
 
 	#create the PCA object for the unknown samples
-	print "creating the unknown sample matrix"
+	print "====================Creating PCA objects (unknown)=============================="		
 	PCA_unknown = [None for x in range(0,max_levels)]
 	for detail_coeff in level_steps:
 		PCA_unknown[detail_coeff] = Flow_pca(unknown_flow_table, service_id, SUT, coeffs_idx=str(detail_coeff))
@@ -234,20 +247,18 @@ if __name__=='__main__':
 		#reduce the unknown matrix
 		PCA_unknown[detail_coeff].X = PCA[detail_coeff].reduceVector(PCA_unknown[detail_coeff].X)
 		print "reduced shape of unknown matrix is", PCA_unknown[detail_coeff].X.shape
+
+	print "====================PCA objects created (unknown)=============================="		
 	
 
 	#use the obj_LogReg to run a hypothesis test on each of the flow entry
+	print "====================Performing logistic regression=============================="		
 	i = 0
 	cl_fd = open("classified.log","w")
 	uncl_fd = open("unclassified.log", "w")
 	for flow_key in unknown_flow_table.flow_table:
 		flow_entry = unknown_flow_table.flow_table[flow_key]
-		#check if the sessions already existed in the background session
-		if flow_key in known_flow_table.flow_table:
-			if (known_flow_table.flow_table[flow_key].service == "background"):
-				flow_entry.service = known_flow_table.flow_table[flow_key].service
-				continue
-		server_key = str(flow_entry.server_ip) +"|"+str(flow_entry.server_port)
+		server_key = flow_key
 		for detail_coeff in level_steps:
 			sample = numpy.array([PCA_unknown[detail_coeff].X[i,:]])
 			#walk through the log-regressions objects for each of known apps and calcualte the hypothesis
@@ -256,12 +267,15 @@ if __name__=='__main__':
 					continue
 				flow_entry.hypothesis = obj_LogReg[detail_coeff][service_key].hypothesis(sample)
 				if service_key in unknown_flow_table.services[server_key]:
+					print "ERROR, we cannot have multiple instances of the server key !!"
 					unknown_flow_table.services[server_key][service_key] +=\
 					flow_entry.hypothesis
 				else:
 					unknown_flow_table.services[server_key][service_key] = flow_entry.hypothesis
 		i += 1
+	print "====================Logistic regression performed (unknown)=============================="		
 
+	print "================Generating output for classified/unclassified service =============="
 	for server_key in unknown_flow_table.services:
 		max_val = 0.0
 		classified_service = ""
@@ -274,6 +288,7 @@ if __name__=='__main__':
 			cl_fd.write(server_key+":"+classified_service+":"+str(unknown_flow_table.services[server_key])+"\n")
 		else:
 			uncl_fd.write(server_key+":"+classified_service+":"+str(unknown_flow_table.services[server_key])+"\n")
+	print "====================DONE !!=============================="		
 
 	cl_fd.close()
 	uncl_fd.close()

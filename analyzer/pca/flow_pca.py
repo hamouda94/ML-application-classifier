@@ -26,7 +26,7 @@ class Flow_pca:
 			return False
 		return True
 			
-	def __init__(self, flows = None, service_id = None, SUT = "", coeffs_idx = "0", json_store = None):
+	def __init__(self, flows = None, service_id = None, SUT="", coeffs_idx = "0", json_store = None):
 		#Create the matrix X
 		#Rows are samples (sessions), and columns are features (coefficients)
 		if json_store != None:
