@@ -40,12 +40,19 @@ class Flow_pca:
 		self.X = numpy.zeros([len(flows.flow_table), flows.max_coeffs[int(coeffs_idx)]],numpy.float)
 		self.dimensions = 0
 		self.features = self.X.shape[1]
+		self.L = ["" for x in range(0,self.X.shape[0])]
+		self.Keys = ["" for x in range(0,self.X.shape[0])]
 		print "Creating X of shape:", self.X.shape
 		#populate the array
 		i = 0
 		for keys in flows.flow_table:
 			j = 0
 			if (len(flows.flow_table[keys].coeffs_dict)):
+					if (flows.flow_table[keys].service == SUT):
+						self.L[i] = flows.flow_table[keys].service
+					else:
+						self.L[i] = "Other"
+					self.Keys[i] = keys
 					for coeff in flows.flow_table[keys].coeffs_dict[coeffs_idx]:
 						self.X[i,j] = coeff
 						j += 1

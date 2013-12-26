@@ -70,6 +70,10 @@ class Flow_table:
 			upstream = False
 			server_ip = ""
 			server_port = ""
+			# Check that this is not just LAN traffic
+			if ((client in str(ip_packet.v4_packet.src_ip)) and  \
+				client in str(ip_packet.v4_packet.dest_ip)):
+				return (None, None, None)
 			if (client in str(ip_packet.v4_packet.src_ip)):
 				upstream = True
 			if (upstream == True):		
