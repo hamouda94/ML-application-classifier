@@ -27,37 +27,36 @@ from analyzer.logistic_reg.flow_log_regg import Flow_log_regg
 #					  learn new parameters for our	classification.
 #	unknown_flow_table: The flow table object containing all the unknown 
 #					  flows. 
-def process_pkt(pkt, known_flow_table, unknown_flow_table, pkt_filter, file_name):
+def process_pkt(pkt, known_flow_table, unknown_flow_table, pkt_filter, service, sample_idx):
 	length= pkt[0]
 	if (length == 0):
 		print "found 0 length packet"
 		return
 	data = pkt[1]
 	time_stamp = pkt[2]
+	pkt_ip = None
 	if data[12:14]=='\x08\x00':
 		pkt_ip = IP_packet(data[14:])
+	if (pkt_ip == None):
+		print "Found a non-IP packet"
+		return 
 	if (pkt_ip.version == 4):
-		if (file_name != "unknown"):
+		if (service != "unknown"):
 			flow_table = known_flow_table
 		else:
 			flow_table = unknown_flow_table
-		flow_entry = flow_table.update_flow_table(pkt_ip)
+		flow_entry = flow_table.update_flow_table(pkt_ip, service, sample_idx)
 		if (flow_entry == None):
 			print "Could not create a flow entry"
 			return
 		if (flow_entry.pkts > 10000):
 			return
-		#If the PCAP is the back-ground signature go ahead and update 
-		#the flow entry blindly
-		if ((pcap_file_key == "background") or \
-				(flow_entry.service == "")):
-			flow_entry.service = pcap_file_key
 
 		if (flow_entry.pkts == 1):
-			if pcap_file_key in supervised_samples:
-				supervised_samples[pcap_file_key] += 1
+			if service in supervised_samples:
+				supervised_samples[service] += 1
 			else:
-				supervised_samples[pcap_file_key] = 1
+				supervised_samples[service] = 1
 		#apply the packet filter only 
 		plength = pkt_filter.apply_filter(pkt_ip, flow_entry.flow_key)
 		#we are using the packet length filter, so set max_levels to 1.
@@ -94,7 +93,7 @@ if __name__=='__main__':
 	level_steps = settings["level_steps"]
 	obj_LogReg = [{} for x in range(0, max_levels)]
 	print "The maximum number of levels required by the filter %d" % (max_levels)
-	SUT = "netflix"
+	SUT = "gmail"
 	supervised_samples = {}
 	PCA = [None for x in range(0, max_levels)]
 
@@ -131,7 +130,7 @@ if __name__=='__main__':
 				#table.
 				process_pkt(pkt=pkt, known_flow_table = known_flow_table,\
 					unknown_flow_table = unknown_flow_table, \
-					pkt_filter=pkt_filter, file_name=pcap_file_key)
+					pkt_filter=pkt_filter, service=pcap_file_key, sample_idx=idx)
 				pkt = p.next()
 	print "====================Processing PCAP done=============================="		
 
@@ -160,10 +159,11 @@ if __name__=='__main__':
 			print svm_data[detail_coeff]
 			print "Number of features:%d" % (svm_data[detail_coeff].numFeatures)
 			#use a guassian kernel on this data
-			svm_data[detail_coeff].attachKernel('gaussian', gamma = 1)
-			svm_classifier[detail_coeff] = SVM(C=2000)
+			svm_data[detail_coeff].attachKernel('gaussian', gamma = 4)
+			svm_classifier[detail_coeff] = SVM(C=1000)
 			svm_classifier[detail_coeff].train(svm_data[detail_coeff])
 			#lets look at the cross validations of the data
+			print "==========performing cross validation========"
 			svm_result = svm_classifier[detail_coeff].cv(svm_data[detail_coeff])
 			print"Success Rate:%f"% (svm_result.getSuccessRate(0)) 
 

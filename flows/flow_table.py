@@ -89,7 +89,10 @@ class Flow_table:
 		try:
 			if (ip_packet.v4_packet.proto == IP_packet.protocols['tcp']):
 				flow_key += "|TCP"
+			elif (ip_packet.v4_packet.proto == IP_packet.protocols['udp']):
+				flow_key += "|UDP"
 			else:
+				print "Packet is neither a UDP nor TCP"
 				return (None, None, None)
 		except AttributeError:
 			print "Unknown attribute found in IP packet, while setting the protocol!!"
@@ -130,7 +133,10 @@ class Flow_table:
 		try:
 			if (ip_packet.v4_packet.proto == IP_packet.protocols['tcp']):
 				flow_key += "|TCP"
+			elif (ip_packet.v4_packet.proto == IP_packet.protocols['udp']):
+				flow_key += "|UDP"
 			else:
+				print "Packet is neither a UDP nor TCP"
 				return (None, None, None)
 		except AttributeError:
 			print "Unknown attribute found in IP packet, while setting the protocol!!"
@@ -148,11 +154,13 @@ class Flow_table:
 			return (None, None, None)
 		return (flow_key, server_ip, server_port)
 
-	def update_flow_table(self, ip_packet):
+	def update_flow_table(self, ip_packet, service_tag, sample_idx):
 		[flow_key, server_ip, server_port] = self.gen_server_key(ip_packet)
 		if (flow_key == None):
 			#Unsupported traffic, return None
 			return None
+		#we want the server and port combination to have a unique ID on each run
+		flow_key += ":"+service_tag+":"+str(sample_idx)
 		#use the flow_key to access the dictionary
 		if (flow_key in self.flow_table):
 			flow_entry = self.flow_table[flow_key]
@@ -163,6 +171,7 @@ class Flow_table:
 			flow_entry = Flow_entry(flow_key)
 			self.flow_table[flow_key] = flow_entry
 			flow_entry.total_len = ip_packet.v4_packet.total_len
+			flow_entry.service = service_tag
 			flow_entry.pkts += 1
 			self.big_hitters[flow_key] = ip_packet.v4_packet.total_len
 

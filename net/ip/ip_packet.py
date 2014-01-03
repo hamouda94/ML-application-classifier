@@ -10,6 +10,8 @@ class IP_packet:
 					self.v4_packet=IPv4_packet(s)
 				except TypeError:
 					print "Unable to create the IP v4 packet."
+			else:
+				print "This is not IPv4 packet"
 		except TypeError:
 			print "Unable to create the IP packet."
 

@@ -3,6 +3,7 @@ import socket
 import struct
 import pcap
 from net.tcp.tcp_packet import TCP_packet 
+from net.udp.udp_packet import UDP_packet 
 
 class IPv4_packet:
 	def __init__(self, s):
@@ -27,3 +28,5 @@ class IPv4_packet:
 		#Create an object based on the payload.
 		if (self.proto == 6): 
 			self.l4_packet = TCP_packet(self.l4_payload)
+		if (self.proto == 17): 
+			self.l4_packet = UDP_packet(self.l4_payload)
