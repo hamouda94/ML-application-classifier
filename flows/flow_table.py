@@ -3,6 +3,8 @@ import operator
 import os
 import sys
 import time
+import dpkt
+import socket
 from net.ip.ip_packet import IP_packet
 
 class Flow_entry:
@@ -70,41 +72,46 @@ class Flow_table:
 			upstream = False
 			server_ip = ""
 			server_port = ""
-			# Check that this is not just LAN traffic
-			if ((client in str(ip_packet.v4_packet.src_ip)) and  \
-				client in str(ip_packet.v4_packet.dest_ip)):
+			src_ip = socket.inet_ntoa(ip_packet.src)
+			dest_ip = socket.inet_ntoa(ip_packet.dst)
+			if (ip_packet.p == dpkt.ip.IP_PROTO_TCP):
+				proto = "TCP"
+				tcp_packet = ip_packet.data
+				dest_port = tcp_packet.dport
+				src_port = tcp_packet.sport
+			elif (ip_packet.p == dpkt.ip.IP_PROTO_UDP):
+				proto = "UDP"
+				udp_packet = ip_packet.data
+				dest_port = udp_packet.dport
+				src_port = udp_packet.sport
+			else:
 				return (None, None, None)
-			if (client in str(ip_packet.v4_packet.src_ip)):
+			
+			# Check that this is not just LAN traffic
+			if ((client in str(src_ip)) and  \
+				client in str(dest_ip)):
+				return (None, None, None)
+			if (client in str(src_ip)):
 				upstream = True
 			if (upstream == True):		
-				flow_key = str(ip_packet.version)+"|"+str(ip_packet.v4_packet.dest_ip)
-				server_ip = str(ip_packet.v4_packet.dest_ip)
+				flow_key = dest_ip
+				server_ip = dest_ip
 			else:
 				#downstream
-				flow_key = str(ip_packet.version)+"|"+str(ip_packet.v4_packet.src_ip)
-				server_ip = str(ip_packet.v4_packet.src_ip)
+				flow_key = src_ip
+				server_ip = src_ip
 		except AttributeError:
 			print "Server key:Unknown attribute found in ip_packet!!", server_ip
 			return (None, None, None)
-		try:
-			if (ip_packet.v4_packet.proto == IP_packet.protocols['tcp']):
-				flow_key += "|TCP"
-			elif (ip_packet.v4_packet.proto == IP_packet.protocols['udp']):
-				flow_key += "|UDP"
-			else:
-				print "Packet is neither a UDP nor TCP"
-				return (None, None, None)
-		except AttributeError:
-			print "Unknown attribute found in IP packet, while setting the protocol!!"
-			return (None, None, None)
+		flow_key += "|"+proto
 		try:
 			if (upstream == True):
-				flow_key += "|"+str(ip_packet.v4_packet.l4_packet.dest_port)
-				server_port = ip_packet.v4_packet.l4_packet.dest_port
+				flow_key += "|"+str(dest_port)
+				server_port = dest_port
 			else:
 				#downstream
-				flow_key += "|"+str(ip_packet.v4_packet.l4_packet.src_port)
-				server_port = ip_packet.v4_packet.l4_packet.src_port
+				flow_key += "|"+str(src_port)
+				server_port = src_port
 		except AttributeError:
 			print "Flow key:%s %d:Unknown attribute found in ip_packet, while setting the src/dest port!!" % (flow_key, upstream)
 			return (None, None, None)
@@ -164,18 +171,13 @@ class Flow_table:
 		#use the flow_key to access the dictionary
 		if (flow_key in self.flow_table):
 			flow_entry = self.flow_table[flow_key]
-			flow_entry.total_len  +=  ip_packet.v4_packet.total_len
-			self.big_hitters[flow_key] += ip_packet.v4_packet.total_len
 			flow_entry.pkts += 1
 		else:
 			flow_entry = Flow_entry(flow_key)
 			self.flow_table[flow_key] = flow_entry
-			flow_entry.total_len = ip_packet.v4_packet.total_len
 			flow_entry.service = service_tag
 			flow_entry.pkts += 1
-			self.big_hitters[flow_key] = ip_packet.v4_packet.total_len
 
-		flow_entry.update_rate(ip_packet.v4_packet.total_len)
 		flow_entry.server_ip = server_ip
 		flow_entry.server_port = server_port
 		service_key =  flow_key

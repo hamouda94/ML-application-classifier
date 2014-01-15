@@ -1,5 +1,5 @@
 #The code has been borrowed from pylibPCAp.sourceforge.net
-import pcap,os
+import dpkt,os
 import sys
 import string
 import time
@@ -27,86 +27,65 @@ from analyzer.logistic_reg.flow_log_regg import Flow_log_regg
 #					  learn new parameters for our	classification.
 #	unknown_flow_table: The flow table object containing all the unknown 
 #					  flows. 
-def process_pkt(pkt, known_flow_table, unknown_flow_table, pkt_filter, service, sample_idx):
-	length= pkt[0]
-	if (length == 0):
-		print "found 0 length packet"
-		return
-	data = pkt[1]
-	time_stamp = pkt[2]
+def process_pkt(pkt, known_flow_table, unknown_flow_table, pkt_filter, service,\
+				sample_idx, max_levels):
 	pkt_ip = None
-	if data[12:14]=='\x08\x00':
-		pkt_ip = IP_packet(data[14:])
-	if (pkt_ip == None):
+	pkt_eth = dpkt.ethernet.Ethernet(pkt)	
+	if pkt_eth.type == dpkt.ethernet.ETH_TYPE_IP:
+		pkt_ip = pkt_eth.data
+	else:
 		print "Found a non-IP packet"
 		return 
-	if (pkt_ip.version == 4):
-		if (service != "unknown"):
-			flow_table = known_flow_table
-		else:
-			flow_table = unknown_flow_table
-		flow_entry = flow_table.update_flow_table(pkt_ip, service, sample_idx)
-		if (flow_entry == None):
-			print "Could not create a flow entry"
-			return
-		if (flow_entry.pkts > 10000):
-			return
+	if (service != "unknown"):
+		flow_table = known_flow_table
+	else:
+		flow_table = unknown_flow_table
+	#A flow entry is basically a sample interaction between a client
+	#a service. A service is defined by a server IP, and a port.
+	#By a sample, we mean all interactions of the client with this service
+	#in this PCAP file. So if a client was having the same interaction, with
+	# the service, in a different PCAP file, it would be considered a new
+	# sample
+	flow_entry = flow_table.update_flow_table(pkt_ip, service, sample_idx)
+	if (flow_entry == None):
+		#Couldn't create the flow_entry, just return
+		return
+	if (flow_entry.pkts > 10000):
+		#We don't need more than 10000 features for a given 
+		#flow
+		return
 
-		if (flow_entry.pkts == 1):
-			if service in supervised_samples:
-				supervised_samples[service] += 1
-			else:
-				supervised_samples[service] = 1
-		#apply the packet filter only 
-		plength = pkt_filter.apply_filter(pkt_ip, flow_entry.flow_key)
-		#we are using the packet length filter, so set max_levels to 1.
-		#TODO: The concept of max-levels made sense when we using wavelets. 
-		#With packet lengths, max-levels doesn't make much sense. Though, it
-		#make sense if use max-levels to denote the different metrics that we 
-		#plan to use for a given flow-entry, for e.g. use inter-arrival times
-		#along with packet length.
-		for i in range(0, max_levels):
-			if str(i) not in flow_entry.coeffs_dict:
-				flow_entry.coeffs_dict[str(i)] = []
-			else: 
-				(flow_entry.coeffs_dict[str(i)]).append(plength)
-			if (len(flow_entry.coeffs_dict[str(i)]) > flow_table.max_coeffs[i]):
-				flow_table.max_coeffs[i] = len(flow_entry.coeffs_dict[str(i)])
+	#apply the packet filter only 
+	plength = pkt_filter.apply_filter(pkt_ip)
+	#we are using the packet length filter, so set max_levels to 1.
+	#TODO: The concept of max-levels made sense when we using wavelets. 
+	#With packet lengths, max-levels doesn't make much sense. Though, it
+	#make sense if use max-levels to denote the different metrics that we 
+	#plan to use for a given flow-entry, for e.g. use inter-arrival times
+	#along with packet length.
+	for i in range(0, max_levels):
+		if str(i) not in flow_entry.coeffs_dict:
+			flow_entry.coeffs_dict[str(i)] = []
+		else: 
+			(flow_entry.coeffs_dict[str(i)]).append(plength)
+		if (len(flow_entry.coeffs_dict[str(i)]) > flow_table.max_coeffs[i]):
+			flow_table.max_coeffs[i] = len(flow_entry.coeffs_dict[str(i)])
 
-#main function
-if __name__=='__main__':
-	print
-	"===========================Initialization===================================="
-	parser = OptionParser(usage="%prog [-l] <settings JSON>")
-	parser.add_option("-l", "--learn", action="store_true", default=False, 
-					dest="learn", help="Perform learning on the PCAp files or not")
-	(options, args) = parser.parse_args()	
-	if len(args) != 1:
-		parser.error("Incorrect number of arguments")
-	print "Opening JSON file %s" %(args[0])
-	json_data = open(args[0])
-	service_id = {'netflix':1,'gmail':1, 'background':1}
-	settings = json.load(json_data)
-	ts = time.time()
-	print 'start time :%f' % ts
+def perform_classification(service_id, settings, SUT, options):
 	max_levels = settings["max_levels"]  
 	level_steps = settings["level_steps"]
-	obj_LogReg = [{} for x in range(0, max_levels)]
-	print "The maximum number of levels required by the filter %d" % (max_levels)
-	SUT = "gmail"
-	supervised_samples = {}
 	PCA = [None for x in range(0, max_levels)]
 
 	#session table, for known and unknown
 	known_flow_table = Flow_table(max_levels)
 	unknown_flow_table = Flow_table(max_levels)
-	rt = time.time()
+
+
+	#the packet filter, used for feature extraction on a packet.
 	pkt_filter = Pkt_len_filter()
-	bkgnd_sess = 0
+	ts = time.time()
+	print 'start time :%f' % ts
 
-
-	print "=====================Initialization done ============================"
-			
 	print "====================Processing PCAP=============================="		
 	#PCAp file processing....
 	for pcap_file_key in settings["apps"]:
@@ -119,24 +98,18 @@ if __name__=='__main__':
 			continue
 		#create the PCAp object
 		for idx in range(0,len(settings["apps"][pcap_file_key])):
-			p = pcap.pcapObject()
-			#open the dump file
-			print "about to process signature for %s, from PCAp file %s" % \
-				(pcap_file_key, settings["apps"][pcap_file_key][idx]) 
-			p.open_offline(str(settings["apps"][pcap_file_key][idx]))
-			pkt = p.next()
-			while (pkt != None):
+			pcap_file = open(settings["apps"][pcap_file_key][idx], "r")
+			print "Processing PCAP file %s" % (settings["apps"][pcap_file_key][idx])
+			for tx, pkt in dpkt.pcap.Reader(pcap_file):
 				#process the packet, generate coeffecients and update the flow 
 				#table.
 				process_pkt(pkt=pkt, known_flow_table = known_flow_table,\
 					unknown_flow_table = unknown_flow_table, \
-					pkt_filter=pkt_filter, service=pcap_file_key, sample_idx=idx)
-				pkt = p.next()
+					pkt_filter=pkt_filter, service=pcap_file_key,\
+					sample_idx=idx, max_levels=max_levels)
+			pcap_file.close()
 	print "====================Processing PCAP done=============================="		
 
-	#list the number of supervised samples
-	for service in supervised_samples:
-		print "supervised samples for %s:%d" % (service, supervised_samples[service])
 
 	print "====================Creating PCA objects (Supervised)=============================="		
 	#initialize the PCA object
@@ -213,9 +186,12 @@ if __name__=='__main__':
 	print "====================SVM performed (unknown)=============================="		
 
 	print "===================Analyzing results ==================================="
+	out_file = open('success_rate.log','a')	
 	for detail_coeff in level_steps:
 		predicted = 0.0
 		unpredicted = 0.0
+		out_str = "level:"+str(detail_coeff)+"\n"
+		out_file.write(out_str)
 		for i in range(0, len(predicted_labels[detail_coeff])):
 			print "%s: %s" % (predicted_labels[detail_coeff][i], PCA_unknown[detail_coeff].Keys[i])
 			if (predicted_labels[detail_coeff][i] == SUT):
@@ -223,12 +199,62 @@ if __name__=='__main__':
 			else:
 				unpredicted+=1
 		print "Success rate:%f, predicted:%f, unpredicted:%f" % (predicted/(predicted+unpredicted), predicted, unpredicted)	
+		out_str = settings["apps"]["unknown"][0]+":"+str(predicted/(predicted+unpredicted))+"\n"
+		out_file.write(out_str)
+
+	out_file.close()
 
 
-
+	
 	te = time.time()
 
 	print 'Total time taken = %f sec' % (te-ts)
+
+#main function
+if __name__=='__main__':
+	print
+	"===========================Initialization===================================="
+	parser = OptionParser(usage="%prog [-l] <settings JSON>")
+	parser.add_option("-l", "--learn", action="store_true", default=False, 
+					dest="learn", help="Perform learning on the PCAp files or not")
+	parser.add_option("-v", "--validation", action="store_true", default=False, 
+					dest="validate", help="Perform validation on all the PCAP files")
+
+	(parse_options, args) = parser.parse_args()	
+	if len(args) != 1:
+		parser.error("Incorrect number of arguments")
+	print "Opening JSON file %s" %(args[0])
+	json_data = open(args[0])
+	service_id = {'netflix':1,'gmail':1, 'background':1}
+	org_settings = json.load(json_data)
+	SUT = "gmail"
+	tmp_settings = org_settings
+	print "The maximum number of levels required by the filter %d" % (org_settings["max_levels"])
+
+	print "=====================Initialization done ============================"
+	if (parse_options.validate == True):
+		for apps_key in org_settings["apps"]:
+			if (apps_key == "unknown"):
+				continue
+			print "Validating app:%s" % (apps_key)
+			tmp_settings = org_settings
+			SUT = apps_key
+			start_idx = 0
+			for app_idx in range(start_idx, len(org_settings["apps"][apps_key])):
+				sample_app_test = tmp_settings["apps"][apps_key].pop(app_idx)
+				#set the unknown sample to the sample_app_test
+				print "Starting validation test with sample %s idx:%d" % (sample_app_test, app_idx)
+				tmp_settings["apps"]["unknown"][0] = sample_app_test
+				perform_classification(service_id=service_id, settings=tmp_settings, SUT=SUT,\
+								options=parse_options)
+				#insert the test sample back in its place
+				tmp_settings["apps"][apps_key].insert(app_idx, sample_app_test)
+
+	if (parse_options.validate == False):
+		perform_classification(service_id=service_id, settings=tmp_settings, SUT=SUT,\
+			options=parse_options)
+
+			
 
 		
 

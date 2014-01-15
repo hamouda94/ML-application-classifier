@@ -7,3 +7,5 @@ log*
 *.log
 *.json.swp
 cache.txt
+.*.*.swp
+success_rate.*
