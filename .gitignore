@@ -1,6 +1,7 @@
 *.pyc
 *.py.swp
 *.json
+!settings.json
 *.pcap
 lib/
 log*
