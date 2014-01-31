@@ -37,6 +37,7 @@ class Flow_pca:
 		self.flows = flows
 		print "Using coefficient %d for analysis.." % (int(coeffs_idx))
 		#Add an extra column to set the service ID
+		print "Max coeff for flow table is %d" % (flows.max_coeffs[int(coeffs_idx)])
 		self.X = numpy.zeros([len(flows.flow_table), flows.max_coeffs[int(coeffs_idx)]],numpy.float)
 		self.dimensions = 0
 		self.features = self.X.shape[1]
@@ -48,10 +49,10 @@ class Flow_pca:
 		for keys in flows.flow_table:
 			j = 0
 			if (len(flows.flow_table[keys].coeffs_dict)):
-					if (flows.flow_table[keys].service == SUT):
-						self.L[i] = flows.flow_table[keys].service
-					else:
-						self.L[i] = "Other"
+				#	if (flows.flow_table[keys].service == SUT):
+					self.L[i] = flows.flow_table[keys].service
+				#	else:
+				#		self.L[i] = "Other"
 					self.Keys[i] = keys
 					for coeff in flows.flow_table[keys].coeffs_dict[coeffs_idx]:
 						self.X[i,j] = coeff

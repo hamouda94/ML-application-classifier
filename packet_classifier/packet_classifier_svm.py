@@ -18,58 +18,6 @@ from flows.flow_table import Flow_table
 from filters.pkt_len_filter import Pkt_len_filter
 from analyzer.pca.flow_pca import Flow_pca
 from analyzer.logistic_reg.flow_log_regg import Flow_log_regg
-#process_pkt:
-#	Parses the packet read from the PCAP file, creates a flow_entry, if already
-# 	not present, and generates coefficients for the given packet.
-#	pkt: The packet to be processed.
-#	known_flow_table: The flow table object containing all the known
-#					  flows. This will be used when we are going to 
-#					  learn new parameters for our	classification.
-#	unknown_flow_table: The flow table object containing all the unknown 
-#					  flows. 
-def process_pkt(pkt, known_flow_table, unknown_flow_table, pkt_filter, service,\
-				sample_idx, max_levels):
-	pkt_ip = None
-	pkt_eth = dpkt.ethernet.Ethernet(pkt)	
-	if pkt_eth.type == dpkt.ethernet.ETH_TYPE_IP:
-		pkt_ip = pkt_eth.data
-	else:
-		print "Found a non-IP packet"
-		return 
-	if (service != "unknown"):
-		flow_table = known_flow_table
-	else:
-		flow_table = unknown_flow_table
-	#A flow entry is basically a sample interaction between a client
-	#a service. A service is defined by a server IP, and a port.
-	#By a sample, we mean all interactions of the client with this service
-	#in this PCAP file. So if a client was having the same interaction, with
-	# the service, in a different PCAP file, it would be considered a new
-	# sample
-	flow_entry = flow_table.update_flow_table(pkt_ip, service, sample_idx)
-	if (flow_entry == None):
-		#Couldn't create the flow_entry, just return
-		return
-	if (flow_entry.pkts > 10000):
-		#We don't need more than 10000 features for a given 
-		#flow
-		return
-
-	#apply the packet filter only 
-	plength = pkt_filter.apply_filter(pkt_ip)
-	#we are using the packet length filter, so set max_levels to 1.
-	#TODO: The concept of max-levels made sense when we using wavelets. 
-	#With packet lengths, max-levels doesn't make much sense. Though, it
-	#make sense if use max-levels to denote the different metrics that we 
-	#plan to use for a given flow-entry, for e.g. use inter-arrival times
-	#along with packet length.
-	for i in range(0, max_levels):
-		if str(i) not in flow_entry.coeffs_dict:
-			flow_entry.coeffs_dict[str(i)] = []
-		else: 
-			(flow_entry.coeffs_dict[str(i)]).append(plength)
-		if (len(flow_entry.coeffs_dict[str(i)]) > flow_table.max_coeffs[i]):
-			flow_table.max_coeffs[i] = len(flow_entry.coeffs_dict[str(i)])
 
 def perform_classification(service_id, settings, SUT, options):
 	max_levels = settings["max_levels"]  
@@ -87,7 +35,7 @@ def perform_classification(service_id, settings, SUT, options):
 	print 'start time :%f' % ts
 
 	print "====================Processing PCAP=============================="		
-	#PCAp file processing....
+	#PCAP file processing....
 	for pcap_file_key in settings["apps"]:
 		#if we don't need to learn the parameters read only the unknown PCAp
 		#file.
@@ -96,15 +44,19 @@ def perform_classification(service_id, settings, SUT, options):
 			print "already have parameters for service %s, not reading PCAp"\
 						" file"  % (pcap_file_key)
 			continue
+		if (pcap_file_key == "unknown"):
+			pkt_flow_table = unknown_flow_table
+		else:
+			pkt_flow_table = known_flow_table
+	
 		#create the PCAp object
 		for idx in range(0,len(settings["apps"][pcap_file_key])):
 			pcap_file = open(settings["apps"][pcap_file_key][idx], "r")
-			print "Processing PCAP file %s" % (settings["apps"][pcap_file_key][idx])
+			print "Processing PCAP file for service %s:%s" % (pcap_file_key, settings["apps"][pcap_file_key][idx])
 			for tx, pkt in dpkt.pcap.Reader(pcap_file):
 				#process the packet, generate coeffecients and update the flow 
 				#table.
-				process_pkt(pkt=pkt, known_flow_table = known_flow_table,\
-					unknown_flow_table = unknown_flow_table, \
+				pkt_flow_table.process_pkt(pkt=pkt,\
 					pkt_filter=pkt_filter, service=pcap_file_key,\
 					sample_idx=idx, max_levels=max_levels)
 			pcap_file.close()
@@ -121,7 +73,7 @@ def perform_classification(service_id, settings, SUT, options):
 	print "====================PCA object creation done (Supervised)=============================="		
 
 
-	#generate logistic reg parameters for each of the different services
+	#generate SVM parameters for each of the different services
 	rewrite_param_json = False
 	svm_data=[None]* len(level_steps)
 	svm_classifier =[None]* len(level_steps)

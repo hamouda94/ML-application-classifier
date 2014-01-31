@@ -1,3 +1,4 @@
+import dpkt
 import string
 import operator
 import os
@@ -184,6 +185,56 @@ class Flow_table:
 		if (service_key not in self.services):
 			self.services[service_key] = {}
 		return flow_entry
+
+	#process_pkt
+	#Add the packet to the flow table. 
+	#@pkt : The dpkt packet that will be used to update a flow entry in the
+	#		flow-table.
+	#pkt_filter: A filter used to retrieve a metric associated with the packet.
+	#service: The application that this packet belongs to.
+	#sample_id: The sample flow that this packet belongs to.
+	#max_levels: This is used only when the pkt_filter is a wavelet filter. This
+	#			 For a wavelet filter this represents the maximum number of
+	#			 levels of the wavelet filter.
+	def process_pkt(self, pkt, pkt_filter, service,\
+	                sample_idx, max_levels):
+		pkt_ip = None
+		pkt_eth = dpkt.ethernet.Ethernet(pkt)	
+		if pkt_eth.type == dpkt.ethernet.ETH_TYPE_IP:
+			pkt_ip = pkt_eth.data
+		else:
+			print "Found a non-IP packet"
+			return 
+		#A flow entry is basically a sample interaction between a client
+		#a service. A service is defined by a server IP, and a port.
+		#By a sample, we mean all interactions of the client with this service
+		#in this PCAP file. So if a client was having the same interaction, with
+		# the service, in a different PCAP file, it would be considered a new
+		# sample
+		pkt_flow_entry = self.update_flow_table(pkt_ip, service, sample_idx)
+		if (pkt_flow_entry == None):
+			#Couldn't create the flow_entry, just return
+			return
+		if (pkt_flow_entry.pkts > 10000):
+			#We don't need more than 10000 features for a given 
+			#flow
+			return
+
+		#apply the packet filter only 
+		plength = pkt_filter.apply_filter(pkt_ip)
+		#we are using the packet length filter, so set max_levels to 1.
+		#TODO: The concept of max-levels made sense when we using wavelets. 
+		#With packet lengths, max-levels doesn't make much sense. Though, it
+		#make sense if use max-levels to denote the different metrics that we 
+		#plan to use for a given flow-entry, for e.g. use inter-arrival times
+		#along with packet length.
+		for i in range(0, max_levels):
+			if str(i) not in pkt_flow_entry.coeffs_dict:
+				pkt_flow_entry.coeffs_dict[str(i)] = []
+			else: 
+				(pkt_flow_entry.coeffs_dict[str(i)]).append(plength)
+			if (len(pkt_flow_entry.coeffs_dict[str(i)]) > self.max_coeffs[i]):
+				self.max_coeffs[i] = len(pkt_flow_entry.coeffs_dict[str(i)])
 
 	def print_flow_table(self):
 		sorted_flow_entry_tupples  = sorted(self.flow_table.iteritems(), key=self.get_sortable_key)
